@@ -1,5 +1,6 @@
 ;;;; package.lisp
 
 (defpackage #:cl-ring
-  (:use #:cl))
+  (:use #:cl #:cl-who #:house)
+  (:shadow #:start))
 
