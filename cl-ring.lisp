@@ -63,29 +63,31 @@
 	  (unless (eq n next)
 	    (query next id))))))
 
-;;;;;;;;;; Logging
-;; (defparameter *log* nil)
-
-;; (defmethod join :before (old new)
-;;   (push `(join ,(id-of old) ,(id-of new)) *log*))
-;; (defmethod introduce! :before (a b)
-;;   (push `(introduce! ,(id-of a) ,(id-of b)) *log*))
-;; (defmethod store! :before (node entry)
-;;   (push `(store! ,(id-of node) ,(id-of entry) ,entry) *log*))
-;; (defmethod network-store :before (node entry)
-;;   (push `(network-store ,(id-of node) ,(id-of entry)) *log*))
-;; (defmethod seek :before (node id)
-;;   (push `(seek ,(id-of node) ,id) *log*))
-;; (defmethod query :before (node id)
-;;   (push `(query ,(id-of node) ,id) *log*))
-
 ;;;;;;;;;; Testing
 (defparameter *origin* nil)
 
+(defmethod join :before (old new)
+  (publish-update! :add-node :node-name (name-of new)))
+(defmethod introduce! :before (a b)
+  (let ((n-a (name-of a))
+	(n-b (name-of b)))
+    (publish-update! :add-edge :from n-a :to n-b)
+    (publish-update! :add-edge :from n-b :to n-a)))
+
+;;;;; TODO
+; store!
+; network-store
+; seek
+; query
+
+(defmethod name-of ((n node))
+  (ironclad:byte-array-to-hex-string
+   (coerce (id-of n) '(vector (unsigned-byte 8)))))
+
 (defun origin! ()
   (let ((n (mk-node)))
-    (setf *origin* n
-	  *log* `((origin ,(id-of n)))))
+    (setf *origin* n)
+    (publish-update! :add-node :node-name (name-of n)))
   nil)
 
 (defun run-test ()
@@ -105,7 +107,7 @@
   (let ((hash (make-hash-table)))
     (loop for (k v) on k/v-pairs by #'cddr
        do (setf (gethash k hash) v))
-    (setf (gethash :action hash) event-type)
+    (setf (gethash :event-type hash) event-type)
     (publish! :cl-ring-updates (json:encode-json-to-string hash))))
 
 (define-handler (cl-ring/source :close-socket? nil) ()

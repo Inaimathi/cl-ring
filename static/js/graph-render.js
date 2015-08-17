@@ -46,7 +46,9 @@ function newGraph (selector, width, height) {
 	    .enter().append("text")
 	    .attr("x", 8)
 	    .attr("y", ".31em")
-	    .text(function(d) { return d.name; });
+	    .text(function(d) {
+		return d.name.substring(0, 5) + "...";
+	    });
 
 	// Use elliptical arc path segments to doubly-encode directionality.
 	function tick() {
@@ -90,10 +92,16 @@ function newGraph (selector, width, height) {
 
     // addEdge :: String -> String -> String? -> IO ()
     function addEdge(from, to, label) {
-	link = {source: nodes[from], target: nodes[to], type: (label || 'suit')}
-	// For some reason, links.push(link) results in some numeric properties being
-	// converted to NaN. No idea why.
-	links = links.concat([link])
+	if (nodes[from] && nodes[to]) {
+	    link = {source: nodes[from], target: nodes[to], type: (label || 'suit')}
+	    // For some reason, links.push(link) results in some numeric properties being
+	    // converted to NaN. No idea why.
+	    links = links.concat([link])
+	} else if (nodes[from]) {
+	    console.error("NO SUCH NODE", to)
+	} else {
+	    console.error("NO SUCH NODE", from)
+	}
     }
 
     // addData :: Storable a => String -> a -> IO ()
@@ -101,20 +109,10 @@ function newGraph (selector, width, height) {
 	console.log("TODO - add ", data, "to node '", nodeName, "'");
     }
 
-    // insert :: [String] -> [{from, to, label?}] -> Map String String -> IO ()
-    function insert (nodeNames, edges, data) {
-	nodeNames.forEach(addNode)
-	edges.forEach(function (e) {
-	    addEdge(e.from, e.to, e.label)
-	});
-	refresh()
-    }
-
     return {
 	addNode: addNode,
 	addEdge: addEdge,
 	addData: addData,
-	insert: insert,
 	refresh: refresh,
 	reset: reset
     }
@@ -127,15 +125,19 @@ document.addEventListener("DOMContentLoaded", function () {
     stream.onerror = function (m) { console.log("Stream ERRORED!")}
     stream.onmessage = function (m) {
 	var parsed = JSON.parse(m.data)
-	if (parsed && (parsed.addNodes || parsed.addEdges || parsed.addData)) {
-	    g.insert(parsed.addNodes || [], parsed.addEdges || [], parsed.addData || []);
-	    // switch ((parsed || {}).action) {
-	    // case 'test':
-	    // 	console.log("THIS IS A TEST MESSAGE");
-	    // 	break;
-	    // default:
-	    // 	console.log("FALLTHROUGH");
-	    // }
+	if (parsed) {
+	    switch (parsed.eventType) {
+	    case "addNode":
+		g.addNode(parsed.nodeName);
+		break;
+	    case "addEdge":
+		g.addEdge(parsed.from, parsed.to, parsed.label)
+		break;
+	    case "addData":
+		g.addData(parsed.nodeName, parsed.daata)
+		break;
+	    }
+	    g.refresh()
 	}
     }
 })
