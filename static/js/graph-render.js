@@ -3,17 +3,6 @@ function newGraph (selector, width, height) {
     var nodes = {}
     var svg = null;
 
-    function addNode(nodeName) {
-	nodes[nodeName] = {name: nodeName}
-    }
-
-    function addEdge(from, to, label) {
-	link = {source: nodes[from], target: nodes[to], type: (label || 'suit')}
-	// For some reason, links.push(link) results in some numeric properties being
-	// converted to NaN. No idea why.
-	links = links.concat([link])
-    }
-
     function plotGraph (svg, vertices, edges) {
 	svg.html("")
 
@@ -82,42 +71,71 @@ function newGraph (selector, width, height) {
 	.attr("width", width)
 	.attr("height", height);
 
+    // refresh :: () -> IO ()
     function refresh() {
 	plotGraph(svg, nodes, links)
     }
 
+    // reset :: () -> IO ()
+    function reset() {
+	nodes = {};
+	links = [];
+	refresh();
+    }
+
+    // addNode :: String -> IO ()
+    function addNode(nodeName) {
+	nodes[nodeName] = {name: nodeName}
+    }
+
+    // addEdge :: String -> String -> String? -> IO ()
+    function addEdge(from, to, label) {
+	link = {source: nodes[from], target: nodes[to], type: (label || 'suit')}
+	// For some reason, links.push(link) results in some numeric properties being
+	// converted to NaN. No idea why.
+	links = links.concat([link])
+    }
+
+    // addData :: Storable a => String -> a -> IO ()
+    function addData(nodeName, data) {
+	console.log("TODO - add ", data, "to node '", nodeName, "'");
+    }
+
+    // insert :: [String] -> [{from, to, label?}] -> Map String String -> IO ()
+    function insert (nodeNames, edges, data) {
+	nodeNames.forEach(addNode)
+	edges.forEach(function (e) {
+	    addEdge(e.from, e.to, e.label)
+	});
+	refresh()
+    }
+
     return {
-	// insert :: [String] -> [{from, to, label?}] -> Map String String -> IO ()
-	insert: function (nodeNames, edges, data) {
-	    nodeNames.forEach(addNode)
-	    edges.forEach(function (e) {
-		addEdge(e.from, e.to, e.label)
-	    });
-	    refresh()
-	},
-	// refresh :: () -> IO ()
+	addNode: addNode,
+	addEdge: addEdge,
+	addData: addData,
+	insert: insert,
 	refresh: refresh,
+	reset: reset
     }
 }
-
-function eventSource (uri, bindings) {
-    var stream = new EventSource(uri)
-    stream.onopen = function (e) { console.log("Stream OPENED!")}
-    stream.onerror = function (e) { console.log("Stream ERRORED!")}
-    stream.onmessage = function (e) {
-	var res = e.data
-	var callback = bindings[res.action]
-	if (callback) {
-	    callback(res)
-	} else {
-	    console.log("UNHANDLED MESSAGE", res);
-	}
-    }
-    return stream;
-}
-
-var g = null;
 
 document.addEventListener("DOMContentLoaded", function () {
-    g = newGraph("body", 1280, 800)
+    var g = newGraph("body", 1280, 800)
+    var stream = new EventSource("/cl-ring/source");
+    stream.onopen = function (m) { console.log("Stream OPENED!")}
+    stream.onerror = function (m) { console.log("Stream ERRORED!")}
+    stream.onmessage = function (m) {
+	var parsed = JSON.parse(m.data)
+	if (parsed && (parsed.addNodes || parsed.addEdges || parsed.addData)) {
+	    g.insert(parsed.addNodes || [], parsed.addEdges || [], parsed.addData || []);
+	    // switch ((parsed || {}).action) {
+	    // case 'test':
+	    // 	console.log("THIS IS A TEST MESSAGE");
+	    // 	break;
+	    // default:
+	    // 	console.log("FALLTHROUGH");
+	    // }
+	}
+    }
 })

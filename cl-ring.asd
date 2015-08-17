@@ -5,7 +5,7 @@
   :author "Your Name <your.name@example.com>"
   :license "Specify license here"
   :serial t
-  :depends-on (#:ironclad #:house #:cl-json)
+  :depends-on (#:alexandria #:ironclad #:house #:cl-json #:bordeaux-threads)
   :components ((:file "package")
                (:file "cl-ring")))
 

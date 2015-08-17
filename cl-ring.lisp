@@ -6,8 +6,8 @@
    (neighbors :accessor neighbors :initform nil)
    (data :reader data :initform (make-hash-table :test 'equal))))
 
-(defmethod hash (thing) (hash (write-to-string thing)))
-(defmethod hash ((str string))
+(defmethod digest (thing) (digest (write-to-string thing)))
+(defmethod digest ((str string))
   (coerce 
    (ironclad:digest-sequence 
     :sha256 (ironclad:ascii-string-to-byte-array str))
@@ -15,11 +15,11 @@
 
 (defun mk-node ()
   (let ((n (make-instance 'node)))
-    (setf (id n) (hash n))
+    (setf (id n) (digest n))
     n))
 
 (defmethod id-of ((n node)) (id n))
-(defmethod id-of (entry) (hash (write-to-string entry)))
+(defmethod id-of (entry) (digest (write-to-string entry)))
 
 (defun distance (id-a id-b)
   (sqrt (loop for a in id-a for b in id-b sum (expt (- a b) 2))))
@@ -64,20 +64,20 @@
 	    (query next id))))))
 
 ;;;;;;;;;; Logging
-(defparameter *log* nil)
+;; (defparameter *log* nil)
 
-(defmethod join :before (old new)
-  (push `(join ,(id-of old) ,(id-of new)) *log*))
-(defmethod introduce! :before (a b)
-  (push `(introduce! ,(id-of a) ,(id-of b)) *log*))
-(defmethod store! :before (node entry)
-  (push `(store! ,(id-of node) ,(id-of entry) ,entry) *log*))
-(defmethod network-store :before (node entry)
-  (push `(network-store ,(id-of node) ,(id-of entry)) *log*))
-(defmethod seek :before (node id)
-  (push `(seek ,(id-of node) ,id) *log*))
-(defmethod query :before (node id)
-  (push `(query ,(id-of node) ,id) *log*))
+;; (defmethod join :before (old new)
+;;   (push `(join ,(id-of old) ,(id-of new)) *log*))
+;; (defmethod introduce! :before (a b)
+;;   (push `(introduce! ,(id-of a) ,(id-of b)) *log*))
+;; (defmethod store! :before (node entry)
+;;   (push `(store! ,(id-of node) ,(id-of entry) ,entry) *log*))
+;; (defmethod network-store :before (node entry)
+;;   (push `(network-store ,(id-of node) ,(id-of entry)) *log*))
+;; (defmethod seek :before (node id)
+;;   (push `(seek ,(id-of node) ,id) *log*))
+;; (defmethod query :before (node id)
+;;   (push `(query ,(id-of node) ,id) *log*))
 
 ;;;;;;;;;; Testing
 (defparameter *origin* nil)
@@ -101,8 +101,15 @@
      do (network-store *origin* str)))
 
 ;;;;;;;;;; Server
+(defun publish-update! (event-type &rest k/v-pairs)
+  (let ((hash (make-hash-table)))
+    (loop for (k v) on k/v-pairs by #'cddr
+       do (setf (gethash k hash) v))
+    (setf (gethash :action hash) event-type)
+    (publish! :cl-ring-updates (json:encode-json-to-string hash))))
+
 (define-handler (cl-ring/source :close-socket? nil) ()
-  (subscribe! :cl-notebook-updates sock))
+  (subscribe! :cl-ring-updates sock))
 
 (define-file-handler "static" :stem-from "static")
 
@@ -114,3 +121,17 @@
       (:script :type "text/javascript" :src "/static/js/d3.min.js")
       (:script :type "text/javascript" :src "/static/js/graph-render.js"))
      (:body))))
+
+(let ((thread))
+  (defun start! ()
+    (setf thread
+	  (bt:make-thread 
+	   (lambda () (house:start 4141)))))
+
+  (defun stop! ()
+    (when (and thread (bt:thread-alive-p thread))
+      (bt:destroy-thread thread))))
+
+;;;;;;;;;; Util
+(defun hash (&rest k/v-pairs)
+  (alexandria:plist-hash-table k/v-pairs))
