@@ -8,10 +8,9 @@
 
 (defmethod digest (thing) (digest (write-to-string thing)))
 (defmethod digest ((str string))
-  (coerce 
+  (ironclad:byte-array-to-hex-string
    (ironclad:digest-sequence 
-    :sha256 (ironclad:ascii-string-to-byte-array str))
-   'list))
+    :sha256 (ironclad:ascii-string-to-byte-array str))))
 
 (defun mk-node ()
   (let ((n (make-instance 'node)))
@@ -24,21 +23,54 @@
 (defun distance (id-a id-b)
   (sqrt (loop for a in id-a for b in id-b sum (expt (- a b) 2))))
 
-(defmethod closest-to ((n node) id)
-  (first (sort (cons n (copy-list (neighbors n))) #'< 
-	       :key (lambda (n) (distance (id n) id)))))
+(defmethod drop-common-prefix ((a string) (b string))
+  (loop for i from 0 for ca across a for cb across b
+     unless (eql ca cb)
+     return (values (subseq a i) (subseq b i) i)))
+
+(defun hex-digit (str ix)
+  (parse-integer str :start ix :end (+ 1 ix) :radix 16))
+
+(defmethod closest-to ((n node) (id string))
+  (let ((res nil))
+    (loop for neigh in (neighbors n)
+       do (multiple-value-bind (my-id neigh-id i) (drop-common-prefix (id-of n) (id-of neigh))
+	    (let ((a (hex-digit my-id 0))
+		  (b (hex-digit neigh-id 0))
+		  (c (hex-digit id i)))
+	      (flet ((f (a b) (min (abs (- a b)) (mod (- a b) 16))))
+		(when (> (f a c) (f b c))
+		  (push neigh res))))))
+    (if (null res)
+	n
+	(nth (random (length res)) res))))
+
+(defun neighbor-list (id depth)
+  (loop for i from 0 to depth
+     append (mapcar 
+	     (lambda (delta)
+	       (let ((id-copy (copy-seq id)))
+		 (setf (aref id-copy i) 
+		       (char (format nil "~(~x~)" (mod (+ (hex-digit id-copy i) delta) 16)) 0))
+		 id-copy))
+	     '(1 -1))))
 
 (defmethod introduce! ((a node) (b node))
-  (push a (neighbors b))
-  (push b (neighbors a))
+  (unless (eq a b)
+    (pushnew a (neighbors b) :test #'eq)
+    (pushnew b (neighbors a) :test #'eq))
   nil)
 
+(defmethod connect! ((start node) (n node) (id string))
+  (let ((next start))
+    (loop for neigh = (closest-to next id)
+       do (if (eq next neigh)
+	      (return (introduce! next n))
+	      (setf next neigh)))))
+
 (defmethod join ((old node) (new node))
-  (unless (zerop (distance (id old) (id new)))
-    (let ((next (closest-to old (id new))))
-      (if (eq next old)
-	  (introduce! old new)
-	  (join next new)))))
+  (loop for neigh in (neighbor-list (id-of new) 4)
+     do (connect! old new neigh)))
 
 (defmethod store! ((n node) entry)
   (setf (gethash (id-of entry) (data n)) entry))
@@ -65,12 +97,14 @@
 
 ;;;;;;;;;; Testing
 (defparameter *origin* nil)
+(defparameter *nodes* nil)
 
 (defmethod join :before (old new)
-  (publish-update! :add-node :node-name (name-of new)))
+  (push new *nodes*)
+  (publish-update! :add-node :node-name (id-of new)))
 (defmethod introduce! :before (a b)
-  (let ((n-a (name-of a))
-	(n-b (name-of b)))
+  (let ((n-a (id-of a))
+	(n-b (id-of b)))
     (publish-update! :add-edge :from n-a :to n-b)
     (publish-update! :add-edge :from n-b :to n-a)))
 
@@ -80,14 +114,11 @@
 ; seek
 ; query
 
-(defmethod name-of ((n node))
-  (ironclad:byte-array-to-hex-string
-   (coerce (id-of n) '(vector (unsigned-byte 8)))))
-
 (defun origin! ()
   (let ((n (mk-node)))
-    (setf *origin* n)
-    (publish-update! :add-node :node-name (name-of n)))
+    (setf *origin* n
+	  *nodes* (list n))
+    (publish-update! :add-node :node-name (id-of n)))
   nil)
 
 (defun run-test ()
@@ -121,6 +152,7 @@
      (:head
       (:link :rel "stylesheet" :href "/static/css/test.css" :type "text/css" :media "screen")
       (:script :type "text/javascript" :src "/static/js/d3.min.js")
+      (:script :type "text/javascript" :src "/static/js/cola.v3.min.js")
       (:script :type "text/javascript" :src "/static/js/graph-render.js"))
      (:body))))
 

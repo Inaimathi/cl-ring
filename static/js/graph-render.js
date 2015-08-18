@@ -6,12 +6,11 @@ function newGraph (selector, width, height) {
     function plotGraph (svg, vertices, edges) {
 	svg.html("")
 
-	var force = d3.layout.force()
+	var force = cola.d3adaptor()
 	    .nodes(d3.values(vertices))
 	    .links(edges)
 	    .size([width, height])
 	    .linkDistance(60)
-	    .charge(-300)
 	    .on("tick", tick)
 	    .start();
 
