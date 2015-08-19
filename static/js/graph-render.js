@@ -1,6 +1,6 @@
 function newGraph (selector, width, height) {
-    var links = []
-    var nodes = {}
+    var edges = []
+    var vertices = {}
     var svg = null;
 
     function plotGraph (svg, vertices, edges) {
@@ -14,25 +14,12 @@ function newGraph (selector, width, height) {
 	    .on("tick", tick)
 	    .start();
 
-	// Per-type markers, as they don't inherit styles.
-	svg.append("defs").selectAll("marker")
-	    .data(["suit", "licensing", "resolved"])
-	    .enter().append("marker")
-	    .attr("id", function(d) { return d; })
-	    .attr("viewBox", "0 -5 10 10")
-	    .attr("refX", 15)
-	    .attr("refY", -1.5)
-	    .attr("markerWidth", 5)
-	    .attr("markerHeight", 5)
-	    .attr("orient", "auto")
-	    .append("path")
-	    .attr("d", "M0,-5L10,0L0,5");
-
-	var path = svg.append("g").selectAll("path")
+	var path = svg.append("g").selectAll("line")
 	    .data(force.links())
-	    .enter().append("path")
-	    .attr("class", function(d) { return "link " + d.type; })
-	    .attr("marker-end", function(d) { return "url(#" + d.type + ")"; });
+	    .enter().append("line")
+	    .attr("class", "edge")
+	    .style("stroke-width", 1)
+	    .style("stroke", 'black');
 
 	var circle = svg.append("g").selectAll("circle")
 	    .data(force.nodes())
@@ -51,16 +38,12 @@ function newGraph (selector, width, height) {
 
 	// Use elliptical arc path segments to doubly-encode directionality.
 	function tick() {
-	    path.attr("d", linkArc);
+	    path.attr("x1", function (d) { return d.source.x; })
+		.attr("y1", function (d) { return d.source.y; })
+		.attr("x2", function (d) { return d.target.x; })
+		.attr("y2", function (d) { return d.target.y; });
 	    circle.attr("transform", transform);
 	    text.attr("transform", transform);
-	}
-
-	function linkArc(d) {
-	    var dx = d.target.x - d.source.x,
-	    dy = d.target.y - d.source.y,
-	    dr = Math.sqrt(dx * dx + dy * dy);
-	    return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
 	}
 
 	function transform(d) {
@@ -74,29 +57,29 @@ function newGraph (selector, width, height) {
 
     // refresh :: () -> IO ()
     function refresh() {
-	plotGraph(svg, nodes, links)
+	plotGraph(svg, vertices, edges)
     }
 
     // reset :: () -> IO ()
     function reset() {
-	nodes = {};
-	links = [];
+	vertices = {};
+	edges = [];
 	refresh();
     }
 
     // addNode :: String -> IO ()
     function addNode(nodeName) {
-	nodes[nodeName] = {name: nodeName}
+	vertices[nodeName] = {name: nodeName}
     }
 
     // addEdge :: String -> String -> String? -> IO ()
     function addEdge(from, to, label) {
-	if (nodes[from] && nodes[to]) {
-	    link = {source: nodes[from], target: nodes[to], type: (label || 'suit')}
-	    // For some reason, links.push(link) results in some numeric properties being
+	if (vertices[from] && vertices[to]) {
+	    link = {source: vertices[from], target: vertices[to], type: (label || 'suit')}
+	    // For some reason, edges.push(link) results in some numeric properties being
 	    // converted to NaN. No idea why.
-	    links = links.concat([link])
-	} else if (nodes[from]) {
+	    edges = edges.concat([link])
+	} else if (vertices[from]) {
 	    console.error("NO SUCH NODE", to)
 	} else {
 	    console.error("NO SUCH NODE", from)

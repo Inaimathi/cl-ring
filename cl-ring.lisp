@@ -103,10 +103,7 @@
   (push new *nodes*)
   (publish-update! :add-node :node-name (id-of new)))
 (defmethod introduce! :before (a b)
-  (let ((n-a (id-of a))
-	(n-b (id-of b)))
-    (publish-update! :add-edge :from n-a :to n-b)
-    (publish-update! :add-edge :from n-b :to n-a)))
+  (publish-update! :add-edge :from (id-of a) :to (id-of b)))
 
 ;;;;; TODO
 ; store!
@@ -156,6 +153,15 @@
       (:script :type "text/javascript" :src "/static/js/graph-render.js"))
      (:body))))
 
+(define-handler (test) ()
+  (with-html-output-to-string (s nil :prologue t :indent t)
+    (:html
+     (:head
+      (:script :type "text/javascript" :src "/static/js/d3.min.js")
+      (:script :type "text/javascript" :src "/static/js/cola.v3.min.js")
+      (:script :type "text/javascript" :src "/static/js/test.js"))
+     (:body))))
+
 (let ((thread))
   (defun start! ()
     (setf thread
@@ -165,6 +171,36 @@
   (defun stop! ()
     (when (and thread (bt:thread-alive-p thread))
       (bt:destroy-thread thread))))
+
+;;;;;;;;;; Fuck it
+(defmethod graph->dot ((nodes list) &optional (stream *standard-output*))
+  (let ((explored (make-hash-table))
+	(names (make-hash-table))
+	(ct 0))
+    (flet ((explored? (thing) (gethash thing explored))
+	   (explore! (thing) 
+	     (setf (gethash thing explored) t))
+	   (label-of (node) 
+	     (subseq (id-of node) 0 6))
+	   (name-of (thing)
+	     (or (gethash thing names)
+		 (setf (gethash thing names)
+		       (format nil "node~a" (incf ct))))))
+      (format stream "graph G {~%~{  ~a;~%~}}"
+	      (loop for n in nodes
+		 unless (explored? n)
+		 collect (format nil "~a [label=~s]" (name-of n) (label-of n)) into nodes
+		 append (progn (explore! n)
+			       (loop for neigh in (neighbors n)
+				  unless (explored? neigh)
+				  collect (format nil "~a -- ~a" (name-of n) (name-of neigh))))
+		 into edges
+		 finally (return (append nodes edges)))))))
+
+(defmethod graph->png ((nodes list) (fname string))
+  (with-open-file (s "tmp.dot" :direction :output :if-does-not-exist :create)
+    (graph->dot nodes s))
+  (trivial-shell:shell-command (format nil "fdp -Tpng tmp.dot -o ~s" fname)))
 
 ;;;;;;;;;; Util
 (defun hash (&rest k/v-pairs)
